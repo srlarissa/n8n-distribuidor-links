@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Distribuidor de Links — Demo</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: #0C0F14;
+      color: #E8E9EB;
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+
+    .container {
+      max-width: 620px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .subtitle {
+      color: #8B8F98;
+      font-size: 15px;
+      margin-bottom: 32px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: #8B8F98;
+      margin-bottom: 6px;
+    }
+
+    .row {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .row > * { flex: 1; }
+
+    input, select {
+      width: 100%;
+      padding: 10px 14px;
+      background: #161A22;
+      border: 1px solid #2A2E38;
+      border-radius: 8px;
+      color: #E8E9EB;
+      font-family: inherit;
+      font-size: 14px;
+      outline: none;
+      appearance: none;
+    }
+
+    input:focus, select:focus {
+      border-color: #34D399;
+    }
+
+    button {
+      width: 100%;
+      padding: 12px;
+      background: #34D399;
+      color: #0C0F14;
+      border: none;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-bottom: 28px;
+    }
+
+    button:hover { background: #3EE8A8; }
+    button:disabled { opacity: 0.5; cursor: wait; }
+
+    .result { display: none; }
+    .result.visible { display: block; }
+
+    .json-raw {
+      background: #161A22;
+      border: 1px solid #2A2E38;
+      border-radius: 8px;
+      padding: 16px;
+      font-family: monospace;
+      font-size: 13px;
+      color: #8B8F98;
+      white-space: pre-wrap;
+      margin-bottom: 24px;
+    }
+
+    .json-raw .key { color: #818CF8; }
+    .json-raw .string { color: #34D399; }
+    .json-raw .number { color: #FBBF24; }
+
+    .fields-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #8B8F98;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 12px;
+    }
+
+    .field-card {
+      background: #161A22;
+      border: 1px solid #2A2E38;
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin-bottom: 8px;
+    }
+
+    .field-header {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      margin-bottom: 4px;
+    }
+
+    .field-name {
+      font-family: monospace;
+      font-size: 14px;
+      color: #818CF8;
+      font-weight: 600;
+    }
+
+    .field-value {
+      font-size: 14px;
+      font-weight: 600;
+      color: #E8E9EB;
+      margin-left: auto;
+      text-align: right;
+      max-width: 60%;
+      word-break: break-all;
+    }
+
+    .field-desc {
+      font-size: 13px;
+      color: #8B8F98;
+      line-height: 1.5;
+    }
+
+    .error-box {
+      background: rgba(248, 113, 113, 0.1);
+      border: 1px solid rgba(248, 113, 113, 0.25);
+      border-radius: 8px;
+      padding: 16px;
+      color: #F87171;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>Distribuidor de Links</h1>
+  <p class="subtitle">Roteamento automático por lotação de grupos</p>
+
+  <div class="row">
+    <div>
+      <label>URL do n8n</label>
+      <input type="text" id="baseUrl" placeholder="https://xxx.up.railway.app" />
+    </div>
+    <div>
+      <label>Campanha</label>
+      <select id="campanha">
+        <option value="turma1">turma1</option>
+        <option value="turma2">turma2</option>
+        <option value="turma99">turma99 (inexistente)</option>
+      </select>
+    </div>
+  </div>
+
+  <button id="btn" onclick="buscar()">Buscar grupo disponível</button>
+
+  <div class="result" id="result">
+    <div class="fields-title">Resposta da API (JSON)</div>
+    <div class="json-raw" id="jsonRaw"></div>
+
+    <div class="fields-title">O que cada campo significa</div>
+    <div id="fieldsExplain"></div>
+  </div>
+
+  <div class="result" id="resultError">
+    <div class="error-box" id="errorMsg"></div>
+  </div>
+</div>
+
+<script>
+  const saved = localStorage.getItem('n8n_url');
+  if (saved) document.getElementById('baseUrl').value = saved;
+
+  const descriptions = {
+    status: 'Indica se a operação deu certo. "ok" = grupo encontrado, "lotado" = sem vagas, "erro" = problema.',
+    grupo: 'Nome do grupo de WhatsApp que foi selecionado pelo sistema.',
+    link: 'Link de convite do WhatsApp — é esse link que o participante clicaria para entrar no grupo.',
+    vagas_restantes: 'Quantas vagas ainda sobram nesse grupo depois desta entrada.',
+    mensagem: 'Mensagem de feedback quando não há grupos disponíveis ou a campanha não existe.'
+  };
+
+  function highlight(json) {
+    const str = JSON.stringify(json, null, 2);
+    return str.replace(/"([^"]+)":/g, '<span class="key">"$1"</span>:')
+              .replace(/: "([^"]+)"/g, ': <span class="string">"$1"</span>')
+              .replace(/: (\d+)/g, ': <span class="number">$1</span>');
+  }
+
+  async function buscar() {
+    const base = document.getElementById('baseUrl').value.replace(/\/+$/, '');
+    if (!base) { alert('Preencha a URL do n8n'); return; }
+    localStorage.setItem('n8n_url', base);
+
+    const campanha = document.getElementById('campanha').value;
+    const btn = document.getElementById('btn');
+
+    btn.disabled = true;
+    btn.textContent = 'Buscando...';
+    document.getElementById('result').classList.remove('visible');
+    document.getElementById('resultError').classList.remove('visible');
+
+    try {
+      const res = await fetch(`${base}/webhook/entrar?campanha=${campanha}`);
+      const data = await res.json();
+
+      document.getElementById('jsonRaw').innerHTML = highlight(data);
+
+      const container = document.getElementById('fieldsExplain');
+      container.innerHTML = '';
+
+      for (const [key, value] of Object.entries(data)) {
+        const desc = descriptions[key] || 'Campo retornado pela API.';
+        container.innerHTML += `
+          <div class="field-card">
+            <div class="field-header">
+              <span class="field-name">${key}</span>
+              <span class="field-value">${value}</span>
+            </div>
+            <div class="field-desc">${desc}</div>
+          </div>
+        `;
+      }
+
+      document.getElementById('result').classList.add('visible');
+
+    } catch (err) {
+      document.getElementById('errorMsg').textContent = 'Não foi possível conectar. Verifique a URL do n8n.';
+      document.getElementById('resultError').classList.add('visible');
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'Buscar grupo disponível';
+  }
+</script>
+
+</body>
+</html>
